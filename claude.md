@@ -43,13 +43,16 @@ Accès données : `getSections` / `saveSections`, `getRows` (mois courant) / `ge
 ## Règles de développement
 - **Ne jamais re-render une ligne pendant la saisie** (`updateRowField` met à jour les totaux sans reconstruire le DOM, sinon le champ perd le focus).
 - Échapper toute chaîne injectée dans le HTML avec `esc()` (gère aussi les guillemets des attributs `value`).
-- Inputs en `font-size ≥ 16px` sur mobile pour éviter le zoom iOS (à appliquer dans la media query `max-width:600px` — **à faire**).
+- Inputs en `font-size ≥ 16px` sur mobile pour éviter le zoom iOS (fait, dans la media query `max-width:600px`).
 - Pas de `float` brut à l'affichage : passer par `fmt()` (arrondi).
 - Chart.js : donut en `responsive:false` (canvas créé dans un onglet masqué).
+- Mobile (≤ 600px) : cibles tactiles ≥ 44px, safe-area (`viewport-fit=cover` + `env(safe-area-inset-*)`), lignes en grille à 2 niveaux (libellé pleine largeur, puis ↻ / montant / suppression). Les actions de catégorie et de sous-catégorie sont dans le corps repliable, pas dans l'en-tête.
+- Swipe de mois ignoré dans les champs, modales et graphiques, et seulement si le geste est nettement horizontal.
+- Après une synchro, jamais de re-render pendant la saisie : passer par `safeRender()` (reporté au `focusout`).
 
 ## Roadmap
 1. **PWA** : `manifest.json`, `sw.js` (cache offline), icônes 192/512, `theme-color`, meta Apple. Héberger en HTTPS. Bundler Chart.js et Font Awesome en local pour le hors-ligne.
-2. **Mobile** : barre d'onglets fixe en bas, cibles tactiles ≥ 44px, inputs 16px, safe-area (`env(safe-area-inset-*)`).
+2. **Mobile** : barre d'onglets fixe en bas (cibles 44px, inputs 16px et safe-area déjà faits).
 3. **Sauvegarde** : export / import JSON (localStorage = perte si cache vidé). Priorité haute.
 4. **Migration v1 → v2** : anciennes clés `mb_{y}_{m}_{section}` non reprises (à écrire si des données v1 existent).
 5. Budget cible par catégorie, objectif d'épargne, duplication vers un mois arbitraire, export PDF/CSV.
