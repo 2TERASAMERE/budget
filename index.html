@@ -2,7 +2,7 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>monbudget</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Sora:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -191,6 +191,26 @@ body{font-family:'Sora',sans-serif;background:var(--bg);color:var(--text);min-he
   .balance-amount{font-size:2rem}
   .row-amount-input{width:85px}
   .analyse-grid{grid-template-columns:1fr}
+}
+
+.sec-actions button,.subcat-edit-btn,.subcat-del-btn{border:1px solid var(--border);padding:6px 12px;font-size:12px}
+.sec-actions{flex-wrap:wrap}
+/* ── Mobile : cibles ≥44px, inputs 16px, safe-area ── */
+@media(max-width:600px){
+  .app{padding:max(1rem,env(safe-area-inset-top)) max(1rem,env(safe-area-inset-right)) max(1.5rem,env(safe-area-inset-bottom)) max(1rem,env(safe-area-inset-left))}
+  input:not([type=checkbox]),select{font-size:16px!important;min-height:44px}
+  .tab,.add-btn,.add-subcat-btn,.acct-btn,.dup-btn,.btn-primary,.btn-secondary,.sec-actions button,.subcat-edit-btn,.subcat-del-btn{min-height:44px}
+  .month-nav button{min-width:44px;min-height:44px}
+  .sec-header{min-height:56px}.subcat-header{min-height:44px}
+  .row{display:grid;grid-template-columns:44px 1fr 44px;grid-template-areas:"label label label" "rec amount del";gap:6px;margin-bottom:14px}
+  .row>.row-label-input{grid-area:label;width:100%}
+  .row>.row-recurring{grid-area:rec;width:44px;height:44px;font-size:14px}
+  .row>.row-amount-input{grid-area:amount;width:100%}
+  .row>.row-del{grid-area:del;min-width:44px;min-height:44px;font-size:14px}
+  .dup-row{min-height:44px}.dup-check{width:22px;height:22px}
+  .modal-color{width:36px;height:36px}.modal-icon{width:44px;height:44px}
+  .modal-actions{flex-wrap:wrap}
+  .toast{left:1rem;right:1rem;bottom:calc(1rem + env(safe-area-inset-bottom))}
 }
 </style>
 </head>
@@ -419,7 +439,7 @@ function getSections(){
   // also seed default data
   DEFAULT_SECTIONS.forEach(s=>s.subcats.forEach(sc=>{
     const k=dataKey(currentYear,currentMonth,s.id,sc.id);
-    if(!localStorage.getItem(k)) localStorage.setItem(k,JSON.stringify(sc.rows));
+    if(!localStorage.getItem(k)) putRows(currentYear,currentMonth,s.id,sc.id,sc.rows);
   }));
   return def;
 }
@@ -475,12 +495,14 @@ function buildSecCard(sec){
       </div>
       <div class="sec-right">
         <span class="sec-total" style="${colorStyle}">${fmt(totalSec)}</span>
-        <button class="sec-edit-btn" onclick="event.stopPropagation();openEditSectionModal('${sec.id}')" title="Modifier"><i class="fa fa-pen"></i></button>
-        <button class="sec-delete-btn" onclick="event.stopPropagation();deleteSection('${sec.id}')" title="Supprimer"><i class="fa fa-trash"></i></button>
         <i class="fa fa-chevron-down sec-chevron" id="schv-${sec.id}"></i>
       </div>
     </div>
     <div class="sec-body" id="secb-${sec.id}">
+      <div class="sec-actions">
+        <button class="sec-edit-btn" onclick="openEditSectionModal('${sec.id}')"><i class="fa fa-pen"></i> Modifier la catégorie</button>
+        <button class="sec-delete-btn" onclick="deleteSection('${sec.id}')"><i class="fa fa-trash"></i> Supprimer</button>
+      </div>
       <div id="subcats-${sec.id}"></div>
       <button class="add-subcat-btn" onclick="openNewSubcatModal('${sec.id}')"><i class="fa fa-plus"></i> Ajouter une sous-catégorie</button>
       <div class="recurring-legend"><i class="fa fa-rotate" style="color:var(--green)"></i> = dépense récurrente (sera proposée à la duplication)</div>
@@ -509,15 +531,15 @@ function buildSubcat(sec,sc){
         <span class="subcat-name">${esc(sc.name)}</span>
         <span class="subcat-total">${fmt(total)}</span>
       </div>
-      <div style="display:flex;align-items:center;gap:4px">
-        <button class="subcat-edit-btn" onclick="event.stopPropagation();openEditSubcatModal('${sec.id}','${sc.id}')" title="Renommer"><i class="fa fa-pen"></i></button>
-        <button class="subcat-del-btn" onclick="event.stopPropagation();deleteSubcat('${sec.id}','${sc.id}')" title="Supprimer"><i class="fa fa-trash"></i></button>
-        <i class="fa fa-chevron-down subcat-chevron open" id="scchv-${sec.id}-${sc.id}"></i>
-      </div>
+      <i class="fa fa-chevron-down subcat-chevron open" id="scchv-${sec.id}-${sc.id}"></i>
     </div>
     <div class="subcat-body open" id="scbody-${sec.id}-${sc.id}">
       <div id="rows-${sec.id}-${sc.id}"></div>
       <button class="add-btn" onclick="addRow('${sec.id}','${sc.id}')"><i class="fa fa-plus"></i> Ajouter une ligne</button>
+      <div class="sec-actions" style="margin:10px 0 0">
+        <button class="subcat-edit-btn" onclick="openEditSubcatModal('${sec.id}','${sc.id}')"><i class="fa fa-pen"></i> Renommer</button>
+        <button class="subcat-del-btn" onclick="deleteSubcat('${sec.id}','${sc.id}')"><i class="fa fa-trash"></i> Supprimer</button>
+      </div>
     </div>
   `;
 
@@ -680,7 +702,7 @@ function updateDonut(vals,labels,colors,total){
   if(leg) leg.innerHTML=labels.map((l,i)=>`
     <div class="legend-item">
       <div class="legend-dot" style="background:${colors[i]}"></div>
-      <div class="legend-label" title="${l}">${l}</div>
+      <div class="legend-label" title="${esc(l)}">${esc(l)}</div>
       <div class="legend-val">${fmt(vals[i])}</div>
       <div class="legend-pct">${total>0?Math.round(vals[i]/total*100):0}%</div>
     </div>`).join('');
@@ -986,9 +1008,16 @@ function toast(msg){
 }
 
 // Swipe mobile
-let txStart=0;
-document.addEventListener('touchstart',e=>txStart=e.touches[0].clientX,{passive:true});
-document.addEventListener('touchend',e=>{if(Math.abs(e.changedTouches[0].clientX-txStart)>60)changeMonth(e.changedTouches[0].clientX<txStart?1:-1);},{passive:true});
+let txStart=0,tyStart=0,swipeOk=false;
+document.addEventListener('touchstart',e=>{
+  swipeOk=!e.target.closest('input,select,textarea,.modal-overlay,canvas');
+  txStart=e.touches[0].clientX;tyStart=e.touches[0].clientY;
+},{passive:true});
+document.addEventListener('touchend',e=>{
+  if(!swipeOk)return;
+  const dx=e.changedTouches[0].clientX-txStart,dy=e.changedTouches[0].clientY-tyStart;
+  if(Math.abs(dx)>80&&Math.abs(dx)>Math.abs(dy)*2)changeMonth(dx<0?1:-1);
+},{passive:true});
 
 // Close modals on overlay click
 document.getElementById('modalOverlay').addEventListener('click',function(e){if(e.target===this)closeModal();});
@@ -1066,6 +1095,14 @@ async function pullEntries(){
 
 // Règle : on envoie d'abord les modifications en attente, puis le cloud fait foi pour la structure ;
 // les lignes présentes seulement en local sont envoyées (fusion), jamais effacées.
+let renderPending=false;
+function safeRender(){
+  const a=document.activeElement;
+  if(a&&a.tagName==='INPUT'&&a.closest('#sections-container')){renderPending=true;return;}
+  renderPending=false;renderAll();
+}
+document.addEventListener('focusout',()=>{if(renderPending)setTimeout(safeRender,0);});
+
 async function syncAll(){
   if(!sb||!cloudUser)return;
   setSync('pending');
@@ -1079,7 +1116,7 @@ async function syncAll(){
     const have=new Set();
     entries.forEach(r=>{const k=dataKey(r.year,r.month,r.section_id,r.subcat_id);have.add(k);localStorage.setItem(k,JSON.stringify(r.rows));});
     localEntries().forEach(x=>{if(!have.has(x.key))queue({t:'rows',y:x.y,m:x.m,s:x.s,c:x.c});});
-    renderAll();
+    safeRender();
     setSync(getPending().length?'pending':'ok');
   }catch(e){setSync('err');}
 }
