@@ -178,6 +178,8 @@ body{font-family:'Sora',sans-serif;background:var(--bg);color:var(--text);min-he
 .btn-primary{background:var(--green-bg);border:1px solid var(--green);color:var(--green);border-radius:8px;padding:7px 16px;font-size:13px;font-family:'Sora',sans-serif;cursor:pointer;font-weight:600;transition:all .2s}
 .btn-primary:hover{background:var(--green);color:#000}
 
+.acct-btn{display:flex;align-items:center;gap:6px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text2);cursor:pointer;padding:7px 11px;font-size:12px;font-family:'Sora',sans-serif;transition:all .2s}
+.acct-btn:hover{border-color:var(--border2);color:var(--text)}
 /* ── Misc ── */
 .add-section-btn{display:flex;align-items:center;gap:8px;background:none;border:1px dashed var(--border);border-radius:var(--radius-lg);color:var(--text3);cursor:pointer;padding:12px 16px;font-size:13px;font-family:'Sora',sans-serif;width:100%;margin-bottom:1rem;justify-content:center;transition:all .2s}
 .add-section-btn:hover{border-color:var(--border2);color:var(--text2)}
@@ -201,6 +203,7 @@ body{font-family:'Sora',sans-serif;background:var(--bg);color:var(--text);min-he
     <div class="logo-icon">💰</div>
     <div class="logo-text">mon<span>budget</span></div>
   </div>
+  <button class="acct-btn" onclick="openAuth()"><i class="fa fa-cloud"></i><span id="syncLbl">Local</span></button>
   <div class="month-nav">
     <button onclick="changeMonth(-1)"><i class="fa fa-chevron-left"></i></button>
     <span class="month-label" id="monthLabel">—</span>
@@ -317,9 +320,36 @@ body{font-family:'Sora',sans-serif;background:var(--bg);color:var(--text);min-he
   </div>
 </div>
 
+<div class="modal-overlay" id="authOverlay">
+  <div class="modal">
+    <h3 id="authTitle">Connexion</h3>
+    <div id="authForm">
+      <label>Email</label>
+      <input type="email" id="authEmail" autocomplete="email" style="font-size:16px">
+      <label>Mot de passe</label>
+      <input type="password" id="authPwd" autocomplete="current-password" placeholder="8 caractères minimum" style="font-size:16px">
+      <p id="authMsg" style="font-size:12px;color:var(--text3);margin-top:.75rem;min-height:18px"></p>
+      <div class="modal-actions">
+        <button class="btn-secondary" onclick="closeAuth()">Fermer</button>
+        <button class="btn-secondary" onclick="doAuth('up')">Créer un compte</button>
+        <button class="btn-primary" onclick="doAuth('in')">Se connecter</button>
+      </div>
+    </div>
+    <div id="authInfo" style="display:none">
+      <p style="font-size:13px;color:var(--text2)">Connecté : <b id="authWho"></b></p>
+      <div class="modal-actions">
+        <button class="btn-secondary" onclick="closeAuth()">Fermer</button>
+        <button class="btn-secondary" onclick="syncNow()">Synchroniser</button>
+        <button class="btn-primary" onclick="doSignOut()">Se déconnecter</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.110.1"></script>
 <script>
 // ════════════════════════════════════════════════
 //  CONSTANTS
@@ -394,7 +424,7 @@ function getSections(){
   return def;
 }
 
-function saveSections(secs){localStorage.setItem(sectionsKey(),JSON.stringify(secs))}
+function saveSections(secs){localStorage.setItem(sectionsKey(),JSON.stringify(secs));queue({t:'cfg'})}
 
 function getRows(secId,scId){return getRowsFor(currentYear,currentMonth,secId,scId)}
 function getRowsFor(y,m,secId,scId){
@@ -406,7 +436,8 @@ function getRowsFor(y,m,secId,scId){
   return [];
 }
 
-function saveRows(secId,scId,rows){localStorage.setItem(dataKey(currentYear,currentMonth,secId,scId),JSON.stringify(rows))}
+function saveRows(secId,scId,rows){putRows(currentYear,currentMonth,secId,scId,rows)}
+function putRows(y,m,secId,scId,rows){localStorage.setItem(dataKey(y,m,secId,scId),JSON.stringify(rows));queue({t:'rows',y,m,s:secId,c:scId})}
 
 // ════════════════════════════════════════════════
 //  RENDER SAISIE
@@ -738,7 +769,7 @@ function executeDuplicate(){
       if(ex){ex.amount=r.amount;ex.recurring=r.recurring;}
       else dstRows.push({...r});
     });
-    localStorage.setItem(dataKey(ty,tm,secId,scId),JSON.stringify(dstRows));
+    putRows(ty,tm,secId,scId,dstRows);
   });
 
   const tgt=MONTHS[tm]+' '+ty;
@@ -811,6 +842,7 @@ function saveModal(){
 function deleteSection(id){
   if(!confirm('Supprimer cette catégorie et toutes ses données ?')) return;
   Object.keys(localStorage).filter(k=>k.startsWith('mb2_')&&k.includes('_'+id+'_')).forEach(k=>localStorage.removeItem(k));
+  queue({t:'delSec',s:id});
   const secs=getSections().filter(s=>s.id!==id);
   saveSections(secs);
   renderAll();
@@ -866,6 +898,8 @@ function deleteSubcat(secId,scId){
   const secs=getSections();
   const sec=secs.find(s=>s.id===secId);
   if(sec) sec.subcats=sec.subcats.filter(sc=>sc.id!==scId);
+  Object.keys(localStorage).filter(k=>k.startsWith('mb2_')&&k.endsWith('_'+secId+'_'+scId)).forEach(k=>localStorage.removeItem(k));
+  queue({t:'delSc',s:secId,c:scId});
   saveSections(secs);
   renderAll();
   toast('Sous-catégorie supprimée.');
@@ -964,8 +998,132 @@ document.getElementById('subcatModalOverlay').addEventListener('click',function(
 //  INIT
 // ════════════════════════════════════════════════
 document.getElementById('monthLabel').textContent=MONTHS[currentMonth]+' '+currentYear;
+// ════════════════════════════════════════════════
+//  CLOUD (Supabase) — optionnel : sans clés, l'app reste 100 % locale
+// ════════════════════════════════════════════════
+const SUPABASE_URL='https://xsyvjgadeajmdtrpkgam.supabase.co';       // ex : https://abcdxyz.supabase.co
+const SUPABASE_ANON_KEY='sb_publishable_r4MxCYoF5b_1jGNwE68emQ_wWcLPtuA';  // clé publique « publishable » (sb_publishable_…) ou ancienne « anon ». JAMAIS sb_secret_ / service_role
+const PKEY='mb2_pending';    // file des modifications à envoyer (survit au hors-ligne)
+let sb=null,cloudUser=null,flushing=false,flushT;
+const $id=id=>document.getElementById(id);
+
+function getPending(){try{return JSON.parse(localStorage.getItem(PKEY)||'[]')}catch(e){return[]}}
+function queue(op){
+  if(!cloudUser)return;
+  const p=getPending();p.push(op);localStorage.setItem(PKEY,JSON.stringify(p));
+  setSync('pending');clearTimeout(flushT);flushT=setTimeout(flush,800);
+}
+function setSync(st){
+  const l=$id('syncLbl');if(!l)return;
+  l.textContent=!sb?'Local':!cloudUser?'Se connecter':st==='err'?'Hors-ligne':st==='pending'?'Sync…':'Synchronisé';
+}
+
+async function flush(){
+  if(flushing||!sb||!cloudUser||!navigator.onLine)return;
+  flushing=true;
+  const snap=getPending(),ok=new Set(),now=()=>new Date().toISOString();
+  for(const op of snap){
+    const k=JSON.stringify(op);if(ok.has(k))continue;
+    try{
+      let r;
+      if(op.t==='cfg') r=await sb.from('budget_config').upsert({user_id:cloudUser.id,sections:getSections(),updated_at:now()});
+      else if(op.t==='rows') r=await sb.from('budget_entries').upsert({user_id:cloudUser.id,year:op.y,month:op.m,section_id:op.s,subcat_id:op.c,rows:getRowsFor(op.y,op.m,op.s,op.c),updated_at:now()});
+      else if(op.t==='delSec') r=await sb.from('budget_entries').delete().eq('section_id',op.s);
+      else if(op.t==='delSc') r=await sb.from('budget_entries').delete().eq('section_id',op.s).eq('subcat_id',op.c);
+      if(r&&r.error)throw r.error;
+      ok.add(k);
+    }catch(e){}
+  }
+  const cur=getPending();
+  snap.forEach(op=>{const k=JSON.stringify(op);if(ok.has(k)){const i=cur.findIndex(x=>JSON.stringify(x)===k);if(i>=0)cur.splice(i,1);}});
+  localStorage.setItem(PKEY,JSON.stringify(cur));
+  flushing=false;
+  setSync(cur.length?'err':'ok');
+}
+
+function localEntries(){
+  const secs=getSections(),out=[];
+  Object.keys(localStorage).forEach(key=>{
+    const m=key.match(/^mb2_(\d{4})_(\d+)_(.+)$/);if(!m)return;
+    const sec=secs.find(s=>m[3].startsWith(s.id+'_'));if(!sec)return;
+    const c=m[3].slice(sec.id.length+1);
+    if(sec.subcats.some(x=>x.id===c))out.push({key,y:+m[1],m:+m[2],s:sec.id,c});
+  });
+  return out;
+}
+
+async function pullEntries(){
+  let all=[],from=0;
+  for(;;){
+    const r=await sb.from('budget_entries').select('year,month,section_id,subcat_id,rows')
+      .order('year').order('month').order('section_id').order('subcat_id').range(from,from+999);
+    if(r.error)throw r.error;
+    all=all.concat(r.data);
+    if(r.data.length<1000)return all;
+    from+=1000;
+  }
+}
+
+// Règle : on envoie d'abord les modifications en attente, puis le cloud fait foi pour la structure ;
+// les lignes présentes seulement en local sont envoyées (fusion), jamais effacées.
+async function syncAll(){
+  if(!sb||!cloudUser)return;
+  setSync('pending');
+  try{
+    await flush();
+    if(getPending().length){setSync('err');return;}
+    const c=await sb.from('budget_config').select('sections').maybeSingle();
+    if(c.error)throw c.error;
+    const entries=await pullEntries();
+    if(c.data)localStorage.setItem(sectionsKey(),JSON.stringify(c.data.sections));else queue({t:'cfg'});
+    const have=new Set();
+    entries.forEach(r=>{const k=dataKey(r.year,r.month,r.section_id,r.subcat_id);have.add(k);localStorage.setItem(k,JSON.stringify(r.rows));});
+    localEntries().forEach(x=>{if(!have.has(x.key))queue({t:'rows',y:x.y,m:x.m,s:x.s,c:x.c});});
+    renderAll();
+    setSync(getPending().length?'pending':'ok');
+  }catch(e){setSync('err');}
+}
+
+async function initCloud(){
+  if(!SUPABASE_URL||!SUPABASE_ANON_KEY||!window.supabase){setSync();return;}
+  sb=supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY);
+  const {data}=await sb.auth.getSession();
+  cloudUser=data.session?data.session.user:null;
+  setSync();
+  if(cloudUser)syncAll();
+  sb.auth.onAuthStateChange((ev,sess)=>{
+    const had=cloudUser;cloudUser=sess?sess.user:null;setSync();
+    if(cloudUser&&!had)setTimeout(syncAll,0);
+  });
+  window.addEventListener('online',()=>{if(cloudUser)syncAll();});
+  document.addEventListener('visibilitychange',()=>{if(!document.hidden&&cloudUser)syncAll();});
+}
+
+function openAuth(){
+  if(!sb){toast('Cloud non configuré : renseigne SUPABASE_URL et SUPABASE_ANON_KEY.');return;}
+  $id('authForm').style.display=cloudUser?'none':'block';
+  $id('authInfo').style.display=cloudUser?'block':'none';
+  $id('authTitle').textContent=cloudUser?'Compte':'Connexion';
+  if(cloudUser)$id('authWho').textContent=cloudUser.email;
+  $id('authMsg').textContent='';
+  $id('authOverlay').classList.add('open');
+}
+function closeAuth(){$id('authOverlay').classList.remove('open');}
+async function doAuth(mode){
+  const email=$id('authEmail').value.trim(),pwd=$id('authPwd').value,msg=$id('authMsg');
+  if(!email||pwd.length<8){msg.textContent='Email et mot de passe (8 caractères min.) requis.';return;}
+  msg.textContent='…';
+  const r=mode==='up'?await sb.auth.signUp({email,password:pwd}):await sb.auth.signInWithPassword({email,password:pwd});
+  if(r.error){msg.textContent=r.error.message;return;}
+  if(mode==='up'&&!r.data.session){msg.textContent='Compte créé. Confirme ton email, puis connecte-toi.';return;}
+  closeAuth();toast('Connecté.');
+}
+async function doSignOut(){await sb.auth.signOut();closeAuth();toast('Déconnecté. Données locales conservées.');}
+async function syncNow(){closeAuth();await syncAll();toast($id('syncLbl').textContent==='Synchronisé'?'Synchronisé.':'Échec de la synchronisation.');}
+
 renderAll();
 toggleSec('revenus');
+initCloud();
 </script>
 </body>
 </html>
